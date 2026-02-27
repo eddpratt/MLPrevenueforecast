@@ -1,0 +1,580 @@
+import React, { useState } from 'react';
+
+const MLPCalculator = () => {
+  // Test panel data from Excel
+  const panelData = [
+    { name: "Covid/Flu/RSV", fullName: "Covid/Flu/RSV (96/384 well)", reimbursement: 115, cogs: 35 },
+    { name: "RPP Lite", fullName: "RPP Lite (24/96 well)", reimbursement: 250, cogs: 50 },
+    { name: "RPP", fullName: "RPP (6/24 well)", reimbursement: 535, cogs: 95 },
+    { name: "RPP Plus", fullName: "RPP Plus (6/24 well)", reimbursement: 650, cogs: 110 },
+    { name: "UTI Lite", fullName: "UTI Lite (24/96 well)", reimbursement: 250, cogs: 50 },
+    { name: "UTI", fullName: "UTI (12/48 well)", reimbursement: 560, cogs: 90 },
+    { name: "UTI Plus", fullName: "UTI Plus (6/24 well)", reimbursement: 675, cogs: 110 },
+    { name: "STI", fullName: "STI (12/48 well)", reimbursement: 285, cogs: 65 },
+    { name: "HPV", fullName: "HPV (12/48 well)", reimbursement: 75, cogs: 50 },
+    { name: "Vaginitis", fullName: "Vaginitis (6/24 well)", reimbursement: 650, cogs: 105 },
+    { name: "Wound", fullName: "Wound (12/48 well)", reimbursement: 525, cogs: 90 }
+  ];
+
+  // State for daily plates inputs (11 values, one per panel)
+  const [dailyPlates, setDailyPlates] = useState(Array(11).fill(0));
+  const [workingDays, setWorkingDays] = useState(21);
+
+  // OPEX fixed values
+  const payroll = 15000;
+  const miscExpenses = 5000;
+  const monthlyOpex = payroll + miscExpenses;
+
+  // Calculate results
+  const calculatePanel = (index) => {
+    const panel = panelData[index];
+    const daily = dailyPlates[index];
+    const monthlyTests = daily * workingDays;
+    const annualTests = monthlyTests * 12;
+    const monthlyRevenue = monthlyTests * panel.reimbursement;
+    const annualRevenue = annualTests * panel.reimbursement;
+    const monthlyCogs = monthlyTests * panel.cogs;
+    const annualCogs = annualTests * panel.cogs;
+    const monthlyNet = monthlyRevenue - monthlyCogs;
+    const annualNet = annualRevenue - annualCogs;
+    
+    return {
+      monthlyTests,
+      annualTests,
+      monthlyRevenue,
+      annualRevenue,
+      monthlyCogs,
+      annualCogs,
+      monthlyNet,
+      annualNet
+    };
+  };
+
+  // Calculate totals
+  const totals = panelData.reduce((acc, _, index) => {
+    const calc = calculatePanel(index);
+    return {
+      monthlyGrossRevenue: acc.monthlyGrossRevenue + calc.monthlyNet,
+      annualGrossRevenue: acc.annualGrossRevenue + calc.annualNet,
+    };
+  }, { monthlyGrossRevenue: 0, annualGrossRevenue: 0 });
+
+  const annualOpex = monthlyOpex * 12;
+  const monthlyNetRevenue = totals.monthlyGrossRevenue - monthlyOpex;
+  const annualNetRevenue = totals.annualGrossRevenue - annualOpex;
+  const monthlyMargin = totals.monthlyGrossRevenue > 0 ? (monthlyNetRevenue / totals.monthlyGrossRevenue) * 100 : 0;
+  const annualMargin = totals.annualGrossRevenue > 0 ? (annualNetRevenue / totals.annualGrossRevenue) * 100 : 0;
+
+  // Export to CSV
+  const exportToCSV = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    try {
+      let csv = "MLP Molecular Testing Revenue Forecast\n\n";
+      csv += `Working Days per Month: ${workingDays}\n`;
+      csv += `Monthly OPEX: $${monthlyOpex.toLocaleString()}\n`;
+      csv += `Annual OPEX: $${annualOpex.toLocaleString()}\n\n`;
+      
+      csv += "Panel,Daily Plates,Monthly Tests,Annual Tests,Reimbursement,COGs,Monthly Revenue,Annual Revenue,Monthly Net,Annual Net\n";
+      
+      panelData.forEach((panel, index) => {
+        const calc = calculatePanel(index);
+        csv += `${panel.name},${dailyPlates[index]},${calc.monthlyTests},${calc.annualTests},$${panel.reimbursement},$${panel.cogs},$${calc.monthlyRevenue.toLocaleString()},$${calc.annualRevenue.toLocaleString()},$${calc.monthlyNet.toLocaleString()},$${calc.annualNet.toLocaleString()}\n`;
+      });
+      
+      csv += `\nTotals,,,,,,,$${totals.monthlyGrossRevenue.toLocaleString()},$${totals.annualGrossRevenue.toLocaleString()}\n`;
+      csv += `OPEX,,,,,,,$${monthlyOpex.toLocaleString()},$${annualOpex.toLocaleString()}\n`;
+      csv += `Net Revenue,,,,,,,$${monthlyNetRevenue.toLocaleString()},$${annualNetRevenue.toLocaleString()}\n`;
+      csv += `Net Margin,,,,,,,$${monthlyMargin.toFixed(2)}%,$${annualMargin.toFixed(2)}%\n`;
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `MLP_Revenue_Forecast_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Export failed. Please try again.');
+    }
+  };
+
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f8fafc 100%)',
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+      padding: '40px 20px',
+    }}>
+      <div style={{
+        maxWidth: '1400px',
+        margin: '0 auto',
+      }}>
+        {/* Header */}
+        <div style={{
+          background: 'linear-gradient(135deg, #0c4a6e 0%, #075985 100%)',
+          borderRadius: '16px',
+          padding: '32px',
+          marginBottom: '32px',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.06)',
+        }}>
+          <h1 style={{
+            margin: '0 0 8px 0',
+            fontSize: '32px',
+            fontWeight: '700',
+            color: '#ffffff',
+            letterSpacing: '-0.02em',
+          }}>
+            MLP Molecular Testing Revenue Forecast
+          </h1>
+          <p style={{
+            margin: 0,
+            fontSize: '14px',
+            color: '#bae6fd',
+            fontWeight: '500',
+          }}>
+            12-Month Revenue Projection at Anticipated Medicare Reimbursement Rates*
+          </p>
+        </div>
+
+        {/* Settings Panel */}
+        <div style={{
+          background: 'white',
+          borderRadius: '12px',
+          padding: '24px',
+          marginBottom: '24px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          border: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '16px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <label style={{
+              fontSize: '14px',
+              fontWeight: '600',
+              color: '#334155',
+            }}>
+              Working Days per Month:
+            </label>
+            <input
+              type="number"
+              value={workingDays}
+              onChange={(e) => setWorkingDays(Math.max(1, parseInt(e.target.value) || 21))}
+              style={{
+                width: '80px',
+                padding: '8px 12px',
+                border: '2px solid #0ea5e9',
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: '600',
+                color: '#0c4a6e',
+                textAlign: 'center',
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={(e) => exportToCSV(e)}
+            style={{
+              padding: '10px 24px',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              transition: 'transform 0.2s',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            📊 Export to CSV
+          </button>
+        </div>
+
+        {/* Test Panels Input Grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: '16px',
+          marginBottom: '32px',
+        }}>
+          {panelData.map((panel, index) => {
+            const calc = calculatePanel(index);
+            return (
+              <div
+                key={index}
+                style={{
+                  background: 'white',
+                  border: dailyPlates[index] > 0 ? '2px solid #0ea5e9' : '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  boxShadow: dailyPlates[index] > 0 
+                    ? '0 4px 6px rgba(14, 165, 233, 0.15)' 
+                    : '0 1px 3px rgba(0,0,0,0.1)',
+                  transition: 'all 0.3s',
+                }}
+              >
+                <div style={{
+                  fontSize: '16px',
+                  fontWeight: '700',
+                  color: '#0c4a6e',
+                  marginBottom: '4px',
+                }}>
+                  {panel.name}
+                </div>
+                <div style={{
+                  fontSize: '12px',
+                  color: '#64748b',
+                  marginBottom: '12px',
+                }}>
+                  ${panel.reimbursement} reimbursement · ${panel.cogs} COGs
+                </div>
+                
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '12px',
+                }}>
+                  <label style={{
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: '#475569',
+                    minWidth: '110px',
+                  }}>
+                    Daily Plates:
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={dailyPlates[index]}
+                    onChange={(e) => {
+                      const newPlates = [...dailyPlates];
+                      newPlates[index] = Math.max(0, parseInt(e.target.value) || 0);
+                      setDailyPlates(newPlates);
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      border: '2px solid #cbd5e1',
+                      borderRadius: '6px',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      color: '#0c4a6e',
+                    }}
+                  />
+                </div>
+
+                {dailyPlates[index] > 0 && (
+                  <div style={{
+                    borderTop: '1px solid #e2e8f0',
+                    paddingTop: '12px',
+                    fontSize: '12px',
+                    color: '#64748b',
+                    display: 'grid',
+                    gap: '4px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Monthly Tests:</span>
+                      <span style={{ fontWeight: '600', color: '#0c4a6e' }}>
+                        {calc.monthlyTests.toLocaleString()}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Annual Tests:</span>
+                      <span style={{ fontWeight: '600', color: '#0c4a6e' }}>
+                        {calc.annualTests.toLocaleString()}
+                      </span>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between',
+                      marginTop: '4px',
+                      paddingTop: '4px',
+                      borderTop: '1px dashed #cbd5e1',
+                    }}>
+                      <span style={{ fontWeight: '600' }}>Annual Net:</span>
+                      <span style={{ fontWeight: '700', color: '#059669', fontSize: '13px' }}>
+                        {formatCurrency(calc.annualNet)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Summary Dashboard */}
+        <div style={{
+          background: 'white',
+          borderRadius: '12px',
+          padding: '32px',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+          border: '2px solid #0ea5e9',
+        }}>
+          <h2 style={{
+            margin: '0 0 24px 0',
+            fontSize: '24px',
+            fontWeight: '700',
+            color: '#0c4a6e',
+          }}>
+            Financial Summary
+          </h2>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '20px',
+          }}>
+            {/* Monthly Metrics */}
+            <div style={{
+              padding: '20px',
+              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+              borderRadius: '10px',
+              border: '1px solid #bae6fd',
+            }}>
+              <div style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: '#0369a1',
+                marginBottom: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Monthly Gross
+              </div>
+              <div style={{
+                fontSize: '28px',
+                fontWeight: '700',
+                color: '#0c4a6e',
+              }}>
+                {formatCurrency(totals.monthlyGrossRevenue)}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '20px',
+              background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+              borderRadius: '10px',
+              border: '1px solid #fcd34d',
+            }}>
+              <div style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: '#b45309',
+                marginBottom: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Monthly OPEX
+              </div>
+              <div style={{
+                fontSize: '28px',
+                fontWeight: '700',
+                color: '#92400e',
+              }}>
+                {formatCurrency(monthlyOpex)}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '20px',
+              background: monthlyNetRevenue >= 0 
+                ? 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)'
+                : 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
+              borderRadius: '10px',
+              border: monthlyNetRevenue >= 0 ? '1px solid #6ee7b7' : '1px solid #fca5a5',
+            }}>
+              <div style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: monthlyNetRevenue >= 0 ? '#065f46' : '#991b1b',
+                marginBottom: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Monthly Net
+              </div>
+              <div style={{
+                fontSize: '28px',
+                fontWeight: '700',
+                color: monthlyNetRevenue >= 0 ? '#064e3b' : '#7f1d1d',
+              }}>
+                {formatCurrency(monthlyNetRevenue)}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '20px',
+              background: 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)',
+              borderRadius: '10px',
+              border: '1px solid #d8b4fe',
+            }}>
+              <div style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: '#6b21a8',
+                marginBottom: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Monthly Margin
+              </div>
+              <div style={{
+                fontSize: '28px',
+                fontWeight: '700',
+                color: '#581c87',
+              }}>
+                {monthlyMargin.toFixed(1)}%
+              </div>
+            </div>
+
+            {/* Annual Metrics */}
+            <div style={{
+              padding: '20px',
+              background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+              borderRadius: '10px',
+              border: '2px solid #60a5fa',
+            }}>
+              <div style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: '#1e40af',
+                marginBottom: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Annual Gross
+              </div>
+              <div style={{
+                fontSize: '28px',
+                fontWeight: '700',
+                color: '#1e3a8a',
+              }}>
+                {formatCurrency(totals.annualGrossRevenue)}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '20px',
+              background: 'linear-gradient(135deg, #fed7aa 0%, #fdba74 100%)',
+              borderRadius: '10px',
+              border: '2px solid #fb923c',
+            }}>
+              <div style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: '#9a3412',
+                marginBottom: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Annual OPEX
+              </div>
+              <div style={{
+                fontSize: '28px',
+                fontWeight: '700',
+                color: '#7c2d12',
+              }}>
+                {formatCurrency(annualOpex)}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '20px',
+              background: annualNetRevenue >= 0
+                ? 'linear-gradient(135deg, #a7f3d0 0%, #6ee7b7 100%)'
+                : 'linear-gradient(135deg, #fecaca 0%, #fca5a5 100%)',
+              borderRadius: '10px',
+              border: annualNetRevenue >= 0 ? '2px solid #34d399' : '2px solid #f87171',
+            }}>
+              <div style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: annualNetRevenue >= 0 ? '#064e3b' : '#7f1d1d',
+                marginBottom: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Annual Net
+              </div>
+              <div style={{
+                fontSize: '28px',
+                fontWeight: '700',
+                color: annualNetRevenue >= 0 ? '#065f46' : '#991b1b',
+              }}>
+                {formatCurrency(annualNetRevenue)}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '20px',
+              background: 'linear-gradient(135deg, #e9d5ff 0%, #d8b4fe 100%)',
+              borderRadius: '10px',
+              border: '2px solid #c084fc',
+            }}>
+              <div style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: '#581c87',
+                marginBottom: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Annual Margin
+              </div>
+              <div style={{
+                fontSize: '28px',
+                fontWeight: '700',
+                color: '#6b21a8',
+              }}>
+                {annualMargin.toFixed(1)}%
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Disclaimer */}
+        <div style={{
+          marginTop: '32px',
+          padding: '20px',
+          background: '#fef3c7',
+          borderRadius: '8px',
+          border: '1px solid #fcd34d',
+        }}>
+          <p style={{
+            margin: 0,
+            fontSize: '12px',
+            color: '#78350f',
+            lineHeight: '1.6',
+          }}>
+            <strong>*Disclaimer:</strong> This document is intended to be used as a forecasting tool. Reimbursement is not guaranteed for any test listed. The reimbursement rates are estimates and not guaranteed. Rates will vary for reasons including but not limited to payor and region. Any Forward-Looking Financial Projections contained herein are subject to a number of risks and uncertainties, and actual results may differ materially. You are cautioned not to place undue reliance on these Financial Projections. No assurances can be given that the future results indicated will be achieved.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MLPCalculator;
